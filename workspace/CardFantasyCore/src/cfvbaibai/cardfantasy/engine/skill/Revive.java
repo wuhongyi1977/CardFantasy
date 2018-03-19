@@ -21,16 +21,24 @@ public final class Revive {
         Grave grave = reviver.getOwner().getGrave();
         List<CardInfo> revivableCards = new ArrayList<CardInfo>();
         for (CardInfo deadCard : grave.toList()) {
-            if (deadCard != null && !deadCard.containsUsableSkillsWithTag(SkillTag.复活) && deadCard.getStar() != 1) {
-            	revivableCards.add(deadCard);
+            // && deadCard.getStar() != 1去掉条件是一星的卡牌，现在可以复活一星。
+            if (deadCard != null && !deadCard.containsAllUsableSkillsWithTag(SkillTag.复活)) {
+                revivableCards.add(deadCard);
             }
         }
         if (revivableCards.isEmpty()) {
             return;
         }
         Skill skill = skillUseInfo.getSkill();
-        CardInfo cardToRevive = resolver.getStage().getRandomizer().pickRandom(
-        		revivableCards, 1, true, null).get(0);
+        CardInfo cardToRevive =null;
+        if(revivableCards.size()==1)
+        {
+            cardToRevive =revivableCards.get(0);
+        }
+        else {
+            cardToRevive = resolver.getStage().getRandomizer().pickRandom(
+                    revivableCards, 1, true, null).get(0);
+        }
         resolver.getStage().getUI().useSkill(reviver, cardToRevive, skill, true);
         if (SoulSeal.soulSealed(resolver, reviver)) {
             return;

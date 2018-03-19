@@ -31,6 +31,8 @@ public class CardInfo extends EntityInfo {
     // Used to record the previous position after card dies.
     private int cachedPosition;
     private boolean deadOnce;
+    private boolean isSumon;
+    private CardInfo relationCardInfo;//关联卡牌,变身前卡牌和变身后卡牌//或者召唤者
     
     private int eternalWound = 0;
 
@@ -51,6 +53,63 @@ public class CardInfo extends EntityInfo {
         }
         this.cachedPosition = -1;
         this.deadOnce = false;
+        this.isSumon = false;
+        this.relationCardInfo = null;
+    }
+
+    public List<SkillUseInfo> getSkillUserInfos(){
+        return this.skillUseInfos;
+    }
+
+    public void addSkill(SkillUseInfo skillUseInfo)
+    {
+        boolean tag = false;
+        for(int j=0;j<this.skillUseInfos.size();j++){
+            if(this.skillUseInfos.get(j).getType() == skillUseInfo.getType()&&this.skillUseInfos.get(j).getSkill().getLevel() == skillUseInfo.getSkill().getLevel()&&this.skillUseInfos.get(j).getGiveSkill() == 1)
+            {
+                tag = true;
+                break;
+            }
+        }
+        if(!tag) {
+            this.skillUseInfos.add(skillUseInfo);
+        }
+    }
+
+    public void removeSkill(SkillUseInfo skillUseInfo)
+    {
+        for(int j=0;j<this.skillUseInfos.size();j++){
+           if(this.skillUseInfos.get(j).getType() == skillUseInfo.getType()&&this.skillUseInfos.get(j).getSkill().getLevel() == skillUseInfo.getSkill().getLevel()&&this.skillUseInfos.get(j).getGiveSkill() == 1)
+           {
+               this.skillUseInfos.remove(j);
+               break;
+           }
+        }
+    }
+
+    //对方回合结束移除技能附加的技能
+    public void removeGiveSkill()
+    {
+        for(int j=0;j<this.skillUseInfos.size();j++){
+            if(this.skillUseInfos.get(j).getGiveSkill() == 1)
+            {
+                this.skillUseInfos.remove(j);
+            }
+        }
+    }
+
+    public void removeAllGiveSkill()
+    {
+        for(int j=0;j<this.skillUseInfos.size();j++){
+            if(this.skillUseInfos.get(j).getGiveSkill() == 1)
+            {
+                this.skillUseInfos.remove(j);
+            }
+            else if(this.skillUseInfos.get(j).getGiveSkill() == 2)
+            {
+                this.skillUseInfos.remove(j);
+            }
+        }
     }
     
     public CardSkill getExtraSkill() {
@@ -74,6 +133,17 @@ public class CardInfo extends EntityInfo {
     //}
 
     public void addEffect(SkillEffect effect) {
+        SkillType type = effect.getCause().getSkill().getType();
+        if (!effects.containsKey(type)) {
+            effects.put(type, new LinkedList<SkillEffect>());
+        }
+        this.effects.get(type).add(effect);
+        if (effect.getType() == SkillEffectType.MAXHP_CHANGE) {
+            this.setBasicHP(this.getHP() + effect.getValue());
+        }
+    }
+
+    public void addCoefficientEffect(SkillEffect effect) {
         SkillType type = effect.getCause().getSkill().getType();
         if (!effects.containsKey(type)) {
             effects.put(type, new LinkedList<SkillEffect>());
@@ -190,6 +260,10 @@ public class CardInfo extends EntityInfo {
     }
 
     public int getLevel3AT() {
+        if((this.getLevel2AT() + this.getSpecificLevelEffectAT(SkillTag.独立攻击加成)) <0)
+        {
+            return 0;
+        }
         return this.getLevel2AT() + this.getSpecificLevelEffectAT(SkillTag.独立攻击加成);
     }
     
@@ -227,6 +301,10 @@ public class CardInfo extends EntityInfo {
         return this.status.remove(type);
     }
 
+    public boolean removeForce(CardStatusType type) {
+        return this.status.removeForce(type);
+    }
+
     @Override
     public String getShortDesc() {
         if (this.getPosition() >= 0) {
@@ -252,6 +330,35 @@ public class CardInfo extends EntityInfo {
         this.hp = this.card.getMaxHP();
         this.status = new CardStatus();
         this.effects.clear();
+        this.setDeadOnce(false);
+    }
+
+    public void resetStart() {
+        this.hp = this.card.getMaxHP();
+        this.status = new CardStatus();
+        List<SkillEffect> addEffect = new ArrayList<SkillEffect>();
+        List<SkillEffect> addEffect2 = new ArrayList<SkillEffect>();
+        for(SkillType key : this.effects.keySet())
+        {
+            if(key== SkillType.拔刀术)
+            {
+                addEffect = this.effects.get(key);
+            }
+            if(key== SkillType.偷偷削弱)
+            {
+                addEffect2 = this.effects.get(key);
+            }
+
+        }
+        this.effects.clear();
+        if(addEffect.size()!=0)
+        {
+            this.effects.put(SkillType.拔刀术,addEffect);
+        }
+        if(addEffect2.size()!=0)
+        {
+            this.effects.put(SkillType.偷偷削弱,addEffect2);
+        }
         this.setDeadOnce(false);
     }
 
@@ -323,7 +430,7 @@ public class CardInfo extends EntityInfo {
 
     public List<SkillUseInfo> getUsablePostcastSkills() {
         List<SkillUseInfo> skillUseInfos = new ArrayList<SkillUseInfo>();
-        for (SkillUseInfo skillUseInfo : this.getAllUsableSkills()) {
+        for (SkillUseInfo skillUseInfo : this.getAllUsableSkillsIgnoreSilence()) {
             CardSkill cardSkill = (CardSkill)skillUseInfo.getSkill();
             if (cardSkill.isPostcastSkill()) {
                 skillUseInfos.add(skillUseInfo);
@@ -343,6 +450,18 @@ public class CardInfo extends EntityInfo {
         }
         return skillUseInfos;
     }
+
+    public List<SkillUseInfo> getUsableNormalSkillsInvalidSilence() {
+        List<SkillUseInfo> skillUseInfos = new ArrayList<SkillUseInfo>();
+        for (SkillUseInfo skillUseInfo : this.getAllUsableSkillsInvalidSilence()) {
+            CardSkill cardSkill = (CardSkill)skillUseInfo.getSkill();
+            if (!cardSkill.isDeathSkill() && !cardSkill.isSummonSkill() &&
+                    !cardSkill.isPrecastSkill() && !cardSkill.isPostcastSkill()) {
+                skillUseInfos.add(skillUseInfo);
+            }
+        }
+        return skillUseInfos;
+    }
     
     public List<SkillUseInfo> getAllUsableSkills() {
         return getUsableSkills(false);
@@ -350,6 +469,10 @@ public class CardInfo extends EntityInfo {
 
     public List<SkillUseInfo> getAllUsableSkillsIgnoreSilence() {
         return getUsableSkills(true);
+    }
+
+    public List<SkillUseInfo> getAllUsableSkillsInvalidSilence() {
+        return getUsableSkillsInvalidSilence(false);
     }
 
     private List<SkillUseInfo> getUsableSkills(boolean ignoreSilence) {
@@ -366,9 +489,40 @@ public class CardInfo extends EntityInfo {
             {
                 //skillUseInfos.removeIf(skillUseInfo -> !skillUseInfo.getType().containsTag(SkillTag.抗沉默));
                 skillUseInfos.clear();
+                for (SkillUseInfo skillUseInfo : this.getAllSkills()) {
+                    CardSkill cardSkill = (CardSkill)skillUseInfo.getSkill();
+                    if (cardSkill.getUnlockLevel() <= this.getCard().getLevel() && cardSkill.getType().containsTag(SkillTag.沉默无效)) {
+                        skillUseInfos.add(skillUseInfo);
+                    }
+                }
             }
         }
 
+        return skillUseInfos;
+    }
+
+    private List<SkillUseInfo> getUsableSkillsInvalidSilence(boolean ignoreSilence) {
+        List<SkillUseInfo> skillUseInfos = new ArrayList<SkillUseInfo>(6);
+        for (SkillUseInfo skillUseInfo : this.getAllSkills()) {
+            CardSkill cardSkill = (CardSkill)skillUseInfo.getSkill();
+            if (cardSkill.getUnlockLevel() <= this.getCard().getLevel()) {
+                skillUseInfos.add(skillUseInfo);
+            }
+        }
+
+        if (!ignoreSilence) {
+            if (this.getStatus().containsStatus(CardStatusType.沉默))
+            {
+                //skillUseInfos.removeIf(skillUseInfo -> !skillUseInfo.getType().containsTag(SkillTag.抗沉默));
+                skillUseInfos.clear();
+                for (SkillUseInfo skillUseInfo : this.getAllSkills()) {
+                    CardSkill cardSkill = (CardSkill)skillUseInfo.getSkill();
+                    if (cardSkill.getUnlockLevel() <= this.getCard().getLevel() && cardSkill.getType().containsTag(SkillTag.沉默无效)) {
+                        skillUseInfos.add(skillUseInfo);
+                    }
+                }
+            }
+        }
         return skillUseInfos;
     }
 
@@ -381,7 +535,12 @@ public class CardInfo extends EntityInfo {
         if (effect.getType() == SkillEffectType.MAXHP_CHANGE && this.getHP() > this.getMaxHP()) {
             this.setBasicHP(this.getMaxHP());
         }
+        if(effect.getType() == SkillEffectType.MAXHP_CHANGE && effect.getValue()<0)
+        {
+            this.setBasicHP(this.hp-effect.getValue());
+        }
     }
+
 
     public List<SkillEffect> getEffects() {
         List<SkillEffect> result = new ArrayList<SkillEffect>();
@@ -539,6 +698,16 @@ public class CardInfo extends EntityInfo {
         return false;
     }
 
+    public boolean containsAllUsableSkillsWithTag(SkillTag tag) {
+        for (SkillUseInfo skillUseInfo : this.getAllUsableSkillsIgnoreSilence()) {
+            CardSkill cardSkill = (CardSkill) skillUseInfo.getSkill();
+            if (cardSkill.getType().containsTag(tag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean isSameType(CardInfo victim, CardInfo defender) {
         return victim.getCard().getName().equals(defender.getCard().getName());
     }
@@ -561,6 +730,16 @@ public class CardInfo extends EntityInfo {
     
     public boolean containsUsableSkill(SkillType type) {
         List<SkillUseInfo> skillUseInfos = this.getAllUsableSkills();
+        for (SkillUseInfo skillUseInfo : skillUseInfos) {
+            if (skillUseInfo.getType() == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean containsAllSkill(SkillType type) {
+        List<SkillUseInfo> skillUseInfos = this.getAllUsableSkillsIgnoreSilence();
         for (SkillUseInfo skillUseInfo : skillUseInfos) {
             if (skillUseInfo.getType() == type) {
                 return true;
@@ -614,7 +793,7 @@ public class CardInfo extends EntityInfo {
         this.eternalWound += this.getMaxHP() - remainingHP;
     }
 
-    public boolean isAwaken(SkillUseInfo skillUseInfo, Race race) {
+    public boolean isAwaken(SkillUseInfo skillUseInfo, Race race,int count) {
         if (this.isDead()) {
             return false;
         }
@@ -626,9 +805,12 @@ public class CardInfo extends EntityInfo {
         }
         List<CardInfo> aliveCards = this.getOwner().getField().getAliveCards();
         for (CardInfo aliveCard : aliveCards) {
-            if (aliveCards != this && aliveCard.getRace() == race) {
-                this.addEffect(new SkillEffect(SkillEffectType.SKILL_AWAKEN, skillUseInfo, 0, true));
-                return true;
+            if (aliveCard.getRace() == race) {
+                count = count-1;
+                if(count<1) {
+                    this.addEffect(new SkillEffect(SkillEffectType.SKILL_AWAKEN, skillUseInfo, 0, true));
+                    return true;
+                }
             }
         }
         return false;
@@ -642,11 +824,31 @@ public class CardInfo extends EntityInfo {
         return this.getRace() == Race.BOSS;
     }
 
+    public boolean isDeman() {
+        return this.getRace() == Race.DEMON;
+    }
+
     public EntityInfo getSummoner() {
         List<CardStatusItem> status = this.getStatus().getStatusOf(CardStatusType.召唤);
         if (status.isEmpty()) {
             return null;
         }
         return status.get(0).getCause().getOwner();
+    }
+
+    public boolean getIsSummon(){
+        return this.isSumon;
+    }
+
+    public void setIsSummon(boolean isSummon){
+        this.isSumon = isSummon;
+    }
+
+    public CardInfo getRelationCardInfo() {
+        return relationCardInfo;
+    }
+
+    public void setRelationCardInfo(CardInfo relationCardInfo) {
+        this.relationCardInfo = relationCardInfo;
     }
 }

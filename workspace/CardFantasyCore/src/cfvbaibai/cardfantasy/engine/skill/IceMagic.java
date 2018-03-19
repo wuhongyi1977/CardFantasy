@@ -18,13 +18,17 @@ public final class IceMagic {
     public static void apply(SkillUseInfo skillUseInfo, SkillResolver resolver, EntityInfo attacker, Player defender,
             int victimCount, int rate, int extraDamage) throws HeroDieSignal {
         Skill skill = skillUseInfo.getSkill();
-        
         List<CardInfo> victims = resolver.getStage().getRandomizer().pickRandom(
             defender.getField().toList(), victimCount, true, null);
         GameUI ui = resolver.getStage().getUI();
-        ui.useSkill(attacker, victims, skill, true);
+
         for (CardInfo victim : victims) {
+            if(victim ==null)
+            {
+                continue;
+            }
             int damage = skill.getImpact() + extraDamage;
+            ui.useSkill(attacker, victim, skill, true);
             OnAttackBlockingResult onAttackBlockingResult = resolver.resolveAttackBlockingSkills(attacker, victim, skill, damage);
             if (!onAttackBlockingResult.isAttackable()) {
                 continue;

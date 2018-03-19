@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import cfvbaibai.cardfantasy.GameUI;
+import cfvbaibai.cardfantasy.data.SkillType;
 import cfvbaibai.cardfantasy.engine.CardInfo;
 import cfvbaibai.cardfantasy.engine.CardStatusType;
 import cfvbaibai.cardfantasy.engine.HeroDieSignal;
@@ -13,7 +14,7 @@ import cfvbaibai.cardfantasy.engine.SkillUseInfo;
 
 public class TimeBack {
     public static void apply(SkillUseInfo skillUseInfo, SkillResolver resolver, Player myHero, Player opHero) throws HeroDieSignal {
-        if (resolver.getStage().hasUsed(skillUseInfo)) {
+        if (resolver.getStage().hasUsed(skillUseInfo)&&resolver.getStage().hasPlayerUsed(skillUseInfo.getOwner().getOwner())) {
             return;
         }
         GameUI ui = resolver.getStage().getUI();
@@ -28,7 +29,10 @@ public class TimeBack {
 
         applyToPlayer(myHero, skillUseInfo, resolver);
         applyToPlayer(opHero, skillUseInfo, resolver);
-        resolver.getStage().setUsed(skillUseInfo, true);
+        if(!resolver.getStage().hasUsed(skillUseInfo)) {
+            resolver.getStage().setUsed(skillUseInfo, true);
+        }
+        resolver.getStage().setPlayerUsed(skillUseInfo.getOwner().getOwner(), true);
     }
     
     private static void applyToPlayer(Player player, SkillUseInfo skillUseInfo, SkillResolver resolver) throws HeroDieSignal {
@@ -38,17 +42,34 @@ public class TimeBack {
             if (card != caster) {
                 if (resolver.resolveAttackBlockingSkills(caster, card, skillUseInfo.getSkill(), 0).isAttackable()) {
                     ui.returnCard(caster, card, skillUseInfo.getSkill());
+                    resolver.resolveLeaveSkills(card);
+                    if (card.containsAllSkill(SkillType.铁壁)||card.containsAllSkill(SkillType.驱虎吞狼)||card.containsAllSkill(SkillType.金汤)) {
+                        for (SkillUseInfo defenderskill : card.getAllUsableSkills()) {
+                            if (defenderskill.getType() == SkillType.铁壁||defenderskill.getType() == SkillType.金汤) {
+                                ImpregnableDefenseHeroBuff.remove(resolver, defenderskill, card);
+                            }
+                            else if (defenderskill.getType() == SkillType.驱虎吞狼)
+                            {
+                                ImpregnableDefenseHeroBuff.remove(resolver, defenderskill.getAttachedUseInfo2(), card);
+                            }
+                        }
+                    }
                     if (!card.getStatus().containsStatus(CardStatusType.召唤)) {
-                        player.getDeck().addCard(card);
+                            card.restoreOwner();
+                            card.getOwner().getDeck().addCard(card);
                     }
                     player.getField().removeCard(card);
                 }
             }
         }
         for (CardInfo card : player.getHand().toList()) {
-            ui.cardToGrave(player, card);
-            player.getDeck().addCard(card);
-            player.getHand().removeCard(card);
+            if (resolver.resolveAttackBlockingSkills(caster, card, skillUseInfo.getSkill(), 0).isAttackable()) {
+                ui.returnCard(caster, card, skillUseInfo.getSkill());
+                ui.cardToGrave(player, card);
+                resolver.resolveLeaveSkills(card);
+                player.getDeck().addCard(card);
+                player.getHand().removeCard(card);
+            }
         }
         player.getDeck().shuffle();
     }

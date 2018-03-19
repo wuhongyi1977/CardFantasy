@@ -25,6 +25,7 @@ public class StageInfo {
     private SkillResolver resolver;
     private Randomizer randomizer;
     private Map<SkillUseInfo, Boolean> globalSkillMap;
+    private Map<Player, Boolean> globalPlayerSkillMap;//2017.12.26 敌方也会发动一次限定技能
 
     public StageInfo(Board board, GameUI ui, Rule rule) {
         this.board = board;
@@ -36,6 +37,7 @@ public class StageInfo {
         this.resolver = new SkillResolver(this);
         this.randomizer = Randomizer.getRandomizer().setUI(ui);
         this.globalSkillMap = new HashMap<SkillUseInfo, Boolean>();
+        this.globalPlayerSkillMap = new HashMap<Player, Boolean>();
         this.started = false;
         this.ended = false;
         this.ui.stageCreated();
@@ -56,9 +58,32 @@ public class StageInfo {
     public void setUsed(SkillUseInfo skillUseInfo, boolean used) {
         this.globalSkillMap.put(skillUseInfo, used);
     }
+
+    public void setPlayerUsed(Player player, boolean used) {
+        this.globalPlayerSkillMap.put(player, used);
+    }
+
+    public void removeUsed(SkillUseInfo skillUseInfo,Player player1,Player player2) {
+        if(hasUsed(skillUseInfo))
+        {
+            this.globalSkillMap.remove(skillUseInfo);
+        }
+        if(hasPlayerUsed(player1))
+        {
+            this.globalPlayerSkillMap.remove(player1);
+        }
+        if(hasPlayerUsed(player2))
+        {
+            this.globalPlayerSkillMap.remove(player2);
+        }
+    }
     
     public boolean hasUsed(SkillUseInfo skillUseInfo) {
         return this.globalSkillMap.containsKey(skillUseInfo) && this.globalSkillMap.get(skillUseInfo);
+    }
+
+    public boolean hasPlayerUsed(Player player) {
+        return this.globalPlayerSkillMap.containsKey(player) && this.globalPlayerSkillMap.get(player);
     }
 
     public SkillResolver getResolver() {
@@ -191,7 +216,7 @@ public class StageInfo {
             Player boss = this.getPlayers().get(0);
             CardInfo bossCard = null;
             for (CardInfo card : boss.getField().getAliveCards()) {
-                if (card.getRace() == Race.BOSS) {
+                if (card.getRace() == Race.BOSS&&!card.getName().equals("炮灰")) {
                     bossCard = card;
                 }
             }
@@ -201,7 +226,7 @@ public class StageInfo {
                     if (card == null) {
                         continue;
                     }
-                    if (card.getRace() == Race.BOSS) {
+                    if (card.getRace() == Race.BOSS&&!card.getName().equals("炮灰")) {
                         bossCard = card;
                         damageToBoss = card.getRawMaxHP();
                         break;

@@ -101,6 +101,7 @@ public class SummonSkillTest extends SkillValidationTest {
 
         random.addNextPicks(1); // 献祭幽灵巨鲸
         random.addNextNumbers(0); // 转生成功
+        random.addNextPicks(1);
         context.proceedOneRound();
 
         Assert.assertEquals(1, context.getPlayer(0).getField().size());
@@ -323,9 +324,11 @@ public class SummonSkillTest extends SkillValidationTest {
      */
     @Test
     public void test降临复活和BUFF_复活的降临系技能() {
-        SkillTestContext context = prepare(50, 50, "月蚀兽+王国守护10", "残血王国小兵+降临烈焰风暴1", "占位符+法力反射1");
+        SkillTestContext context = prepare(50, 50, "月蚀兽+王国守护10", "残血王国大兵+降临烈焰风暴1", "占位符+法力反射1", "残血王国小兵+降临烈焰风暴1");
         context.addToHand(0, 0).setSummonDelay(0);
-        CardInfo c残血王国小兵 = context.addToGrave(1, 0);
+        @SuppressWarnings("unused")
+        CardInfo c残血王国小兵 = context.addToGrave(3, 0);
+        CardInfo c残血王国大兵 = context.addToGrave(1, 0);
         CardInfo c占位符 = context.addToField(2, 1);
         context.startGame();
 
@@ -333,10 +336,12 @@ public class SummonSkillTest extends SkillValidationTest {
         random.addNextPicks(0); // 降临复活
         random.addNextPicks(0).addNextNumbers(0); // 降临烈焰风暴
         context.proceedOneRound();
-        // 由于BUFF比降临烈焰风暴先发动，残血王国小兵的血量提升，所以被法力反射打后并没死
+        // 由于复活技能不能复活一星卡牌，所以被复活的卡牌应该是5星卡残血大兵而不是小兵。
+        Assert.assertTrue(c残血王国大兵.isAlive());
+        // 由于BUFF比降临烈焰风暴先发动，残血大兵的血量提升，所以被法力反射打后并没死
         Assert.assertEquals(2, context.getPlayer(0).getField().size());
-        Assert.assertFalse(c残血王国小兵.justRevived());  // 降临复活拉回来的卡立刻就能行动
-        Assert.assertEquals(30, 1 + 500 - c残血王国小兵.getHP());
+        Assert.assertFalse(c残血王国大兵.justRevived());  // 降临复活拉回来的卡立刻就能行动
+        Assert.assertEquals(30, 1 + 500 - c残血王国大兵.getHP());
         Assert.assertEquals(825, 5000 - c占位符.getHP());
     }
 
@@ -429,25 +434,26 @@ public class SummonSkillTest extends SkillValidationTest {
 
     @Test
     public void test星云锁链_降临复活() {
+        //修改星云锁链的降临复活会在生效。
         SkillTestContext context = prepare(
                 50, 50, "占位符+星云锁链", "占位符", "占位符+降临复活", "占位符", "占位符");
         CardInfo c占位符1 = context.addToHand(0, 0).setSummonDelay(0);
         CardInfo c占位符2 = context.addToDeck(1, 0);
         CardInfo c占位符3 = context.addToDeck(2, 0);
-        CardInfo c占位符4 = context.addToGrave(3, 0);
+        context.addToGrave(3, 0);
         context.addToField(4, 1);
         context.getEngine().getStage().getRule().setDeckOrder(1);
         context.startGame();
 
         context.proceedOneRound();
         Player p1 = c占位符1.getOwner();
-        Assert.assertEquals(2, p1.getField().size());
+        Assert.assertEquals(3, p1.getField().size());
         Assert.assertSame(c占位符1, p1.getField().getCard(0));
         Assert.assertSame(c占位符3, p1.getField().getCard(1));
         Assert.assertEquals(1, p1.getHand().size());
         Assert.assertSame(c占位符2, p1.getHand().getCard(0));
-        Assert.assertEquals(1, p1.getGrave().size());
-        Assert.assertSame(c占位符4, p1.getGrave().getFirst());
+        Assert.assertEquals(0, p1.getGrave().size());
+        Assert.assertSame(null, p1.getGrave().getFirst());
     }
 
     @Test

@@ -4,11 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import cfvbaibai.cardfantasy.CardFantasyRuntimeException;
-import cfvbaibai.cardfantasy.CardFantasyUserRuntimeException;
-import cfvbaibai.cardfantasy.GameOverSignal;
-import cfvbaibai.cardfantasy.GameUI;
-import cfvbaibai.cardfantasy.Global;
+import cfvbaibai.cardfantasy.*;
 import cfvbaibai.cardfantasy.data.Card;
 import cfvbaibai.cardfantasy.data.PlayerInfo;
 import cfvbaibai.cardfantasy.data.Rune;
@@ -18,6 +14,7 @@ import cfvbaibai.cardfantasy.data.SkillType;
 public class BattleEngine {
 
     private StageInfo stage;
+
     public StageInfo getStage() {
         return stage;
     }
@@ -31,7 +28,7 @@ public class BattleEngine {
         engine.registerPlayers(p1, p2);
         return engine.playGame();
     }
-    
+
     public List<CardInfo> exportSurvivers(int playerIndex) {
         Player player = this.getStage().getPlayers().get(playerIndex);
         List<CardInfo> result = new ArrayList<CardInfo>();
@@ -51,8 +48,9 @@ public class BattleEngine {
     /**
      * This method should be called after the user is registered.
      * This method will tag survivors with remaining HP in deck.
+     *
      * @param playerIndex
-     * @param survivers
+     * @param survivors
      */
     public void importSurvivers(int playerIndex, List<CardInfo> survivors) {
         Player player = this.getStage().getPlayers().get(playerIndex);
@@ -75,15 +73,15 @@ public class BattleEngine {
     private Player getInactivePlayer() {
         return this.stage.getInactivePlayers().get(0);
     }
-    
+
     public static void validateDeck(PlayerInfo playerInfo) {
         if (playerInfo.isNormalPlayer() && playerInfo.getLevel() > 150) {
             throw new CardFantasyUserRuntimeException(String.format(
                     "%s 的等级过高：%d！玩家等级不得超过150级。",
                     playerInfo.getId(), playerInfo.getLevel()));
         }
-        Collection <Card> cards = playerInfo.getCards();
-        Collection <Rune> runes = playerInfo.getRunes();
+        Collection<Card> cards = playerInfo.getCards();
+        Collection<Rune> runes = playerInfo.getRunes();
         if (playerInfo.isNormalPlayer() && cards.size() > playerInfo.getCardSlot()) {
             throw new CardFantasyUserRuntimeException(String.format(
                     "%s 的卡牌槽不足！%s 卡牌槽数：%d, 卡组卡牌数：%d",
@@ -143,10 +141,10 @@ public class BattleEngine {
                     nextPhase = roundStart();
                 } else if (phase == Phase.抽卡) {
                     nextPhase = drawCard();
-                } else if (phase == Phase.准备) {
-                    nextPhase = standby();
                 } else if (phase == Phase.召唤) {
                     nextPhase = summonCards();
+                } else if (phase == Phase.准备) {
+                    nextPhase = standby();
                 } else if (phase == Phase.战斗) {
                     nextPhase = battle();
                 } else if (phase == Phase.结束) {
@@ -181,14 +179,15 @@ public class BattleEngine {
 
     private Phase summonCards() throws HeroDieSignal {
         Player player = this.getActivePlayer();
+        this.stage.getResolver().setStagePhase(Phase.召唤);
+        for (CardInfo card : this.getActivePlayer().getField().getAliveCards()) {
+            this.stage.getResolver().removeStatus(card, CardStatusType.复活);
+        }
         this.stage.getResolver().summonCards(player, null, false);
 
         player.getField().compact();
         this.getInactivePlayer().getField().compact();
 
-        for (CardInfo card : this.getActivePlayer().getField().getAliveCards()) {
-            this.stage.getResolver().removeStatus(card, CardStatusType.复活);
-        }
 
         return Phase.准备;
     }
@@ -198,17 +197,23 @@ public class BattleEngine {
         this.stage.getResolver().resolvePreAttackRune(this.getActivePlayer(), this.getInactivePlayer());
         this.stage.getResolver().resolvePreAttackSkills(this.getActivePlayer(), this.getInactivePlayer());
         for (CardInfo card : this.getActivePlayer().getHand().toList()) {
-            this.stage.getResolver().resolvePrecastSkills(card, this.getInactivePlayer());
+            this.stage.getResolver().resolvePrecastSkills(card, this.getInactivePlayer(),true);
         }
-
+        for (CardInfo card : this.getActivePlayer().getField().getAliveCards()) {
+            this.stage.getResolver().removeStatus(card, CardStatusType.复活);
+        }
         return Phase.战斗;
     }
 
     private Phase roundEnd() throws HeroDieSignal {
+        this.stage.getResolver().setStagePhase(Phase.结束);
         for (CardInfo card : this.getActivePlayer().getGrave().toList()) {
             this.stage.getResolver().resolvePostcastSkills(card, this.getInactivePlayer());
         }
-
+        for(CardInfo defenderCard : this.getInactivePlayer().getField().getAliveCards())
+        {
+            this.stage.getResolver().removeGiveSkills(defenderCard);
+        }
         Collection<CardInfo> allHandCards = this.stage.getAllHandCards();
         for (CardInfo card : allHandCards) {
             int summonDelay = card.getSummonDelay();
@@ -225,7 +230,7 @@ public class BattleEngine {
         if (Global.isDebugging()) {
             this.getStage().getBoard().validate();
         }
-        
+
         int nextPlayerNumber = (this.stage.getActivePlayerNumber() + 1) % stage.getPlayerCount();
         this.stage.setActivePlayerNumber(nextPlayerNumber);
         Player nextPlayer = this.getActivePlayer();
@@ -243,6 +248,7 @@ public class BattleEngine {
          */
 
         SkillResolver resolver = stage.getResolver();
+        this.stage.getResolver().setStagePhase(Phase.战斗);
         GameUI ui = stage.getUI();
 
         ui.battleBegins();
@@ -278,17 +284,22 @@ public class BattleEngine {
                     SkillUseInfo skillUseInfo = softenedStatusItems.get(j).getCause();
                     ui.softened(myCard);
                     int adjAT = -currentBaseAT / 2;
+                    if(skillUseInfo.getType() == SkillType.常夏日光||skillUseInfo.getType() == SkillType.碎裂怒吼)
+                    {
+                        adjAT = -currentBaseAT;
+                        currentBaseAT = 0;
+                    }
                     ui.adjustAT(skillUseInfo.getOwner(), myCard, adjAT, skillUseInfo.getSkill());
                     myField.getCard(i).addEffect(
-                        new SkillEffect(SkillEffectType.ATTACK_CHANGE, skillUseInfo, adjAT, false));
+                            new SkillEffect(SkillEffectType.ATTACK_CHANGE, skillUseInfo, adjAT, false));
                     currentBaseAT /= 2;
                 }
             }
             if (status.containsStatus(CardStatusType.迷惑) ||
-                status.containsStatus(CardStatusType.冰冻) ||
-                status.containsStatus(CardStatusType.锁定) ||
-                status.containsStatus(CardStatusType.复活) ||
-                status.containsStatus(CardStatusType.晕眩)) {
+                    status.containsStatus(CardStatusType.冰冻) ||
+                    status.containsStatus(CardStatusType.锁定) ||
+                    status.containsStatus(CardStatusType.复活) ||
+                    status.containsStatus(CardStatusType.晕眩)) {
                 underControl = true;
 
                 if (status.containsStatus(CardStatusType.迷惑)) {
@@ -315,6 +326,8 @@ public class BattleEngine {
                 CardInfo myCard = myField.getCard(i);
                 List<SkillEffect> effects = myCard.getEffectsCausedBy(SkillType.虚弱);
                 effects.addAll(myCard.getEffectsCausedBy(SkillType.战争怒吼));
+                effects.addAll(myCard.getEffectsCausedBy(SkillType.碎裂怒吼));
+                effects.addAll(myCard.getEffectsCausedBy(SkillType.常夏日光));
                 for (SkillEffect effect : effects) {
                     resolver.getStage().getUI().loseAdjustATEffect(myCard, effect);
                     myCard.removeEffect(effect);
@@ -334,6 +347,32 @@ public class BattleEngine {
             resolver.resolveDebuff(myField.getCard(i), CardStatusType.中毒);
             resolver.resolveDebuff(myField.getCard(i), CardStatusType.燃烧);
             resolver.removeStatus(myField.getCard(i), CardStatusType.沉默);
+            resolver.removeStatus(myField.getCard(i), CardStatusType.死咒);
+            if (status.containsStatus(CardStatusType.变羊)) {
+                //变羊类技能恢复原状
+                List<CardStatusItem>  sheepStatus= status.getStatusOf(CardStatusType.变羊);
+                {
+                    for(CardStatusItem statusItem:sheepStatus)
+                    {
+                        if(myField.getCard(i)==null)
+                        {
+                            break;
+                        }
+                        for (SkillEffect effect : myField.getCard(i).getEffectsCausedBy(statusItem.getCause())) {
+                            if (effect.getType() == SkillEffectType.ATTACK_CHANGE) {
+                                resolver.getStage().getUI().loseAdjustATEffect(myField.getCard(i), effect);
+                            } else if (effect.getType() == SkillEffectType.MAXHP_CHANGE) {
+                                myField.getCard(i).setBasicHP(statusItem.getCause().getSkill().getImpact2());
+                                resolver.getStage().getUI().loseAdjustHPEffect(myField.getCard(i), effect);
+                            } else {
+                                throw new CardFantasyRuntimeException("Invalid effect type: " + effect.getType().name());
+                            }
+                            myField.getCard(i).removeEffect(effect);
+                        }
+                    }
+                }
+                resolver.removeStatus(myField.getCard(i), CardStatusType.变羊);
+            }
 
             if (!underControl) {
                 // 回春
@@ -360,22 +399,32 @@ public class BattleEngine {
         }
         List<CardInfo> cards = new ArrayList<CardInfo>();
         cards.add(myField.getCard(i));
-        resolver.resolveSecondClassSummoningSkills(cards, myField, opField, null, false);
+        //二段技能发动时机改变
+//        resolver.resolveSecondClassSummoningSkills(cards, myField, opField, null, false);
         if (myField.getCard(i) == null) {
             return;
         }
-        resolver.resolvePreAttackSkills(myField.getCard(i), getInactivePlayer());
+        resolver.resolvePreAttackSkills(myField.getCard(i), getInactivePlayer(),0);
         if (myField.getCard(i) == null) {
             return;
         }
         if (opField.getCard(i) == null) {
             resolver.resolvePreAttackHeroSkills(myField.getCard(i), getInactivePlayer());
             resolver.attackHero(myField.getCard(i), getInactivePlayer(), null, myField.getCard(i).getCurrentAT());
+            if (myField.getCard(i)!=null&&(myField.getCard(i).containsUsableSkill(SkillType.连斩)||myField.getCard(i).containsUsableSkill(SkillType.原素裂变)||myField.getCard(i).containsUsableSkill(SkillType.死亡收割))) {
+                boolean killCard = true;
+                for(;killCard;) {
+                    killCard = randomAttackCard(myField, opField, i);
+                    if (myField.getCard(i) == null || myField.getCard(i).isDead()){
+                        killCard = false;
+                    }
+                }
+            }
             resolver.removeStatus(myField.getCard(i), CardStatusType.不屈);
         } else {
             tryAttackCard(myField, opField, i);
         }
-        
+
         // Remove lasting effects
         resolver.removeTempEffects(myField.getCard(i));
         //
@@ -390,35 +439,76 @@ public class BattleEngine {
             resolver.attackHero(myField.getCard(i), getInactivePlayer(), null, myField.getCard(i).getCurrentAT());
             resolver.removeStatus(myField.getCard(i), CardStatusType.不屈);
         } else {
-            processAttackCard(myField, opField, i);
+            processAttackCard(myField, opField, i,true);
             if (myField.getCard(i) != null && !myField.getCard(i).isDead() &&
-                opField.getCard(i) != null && !opField.getCard(i).isDead()) {
-                if (myField.getCard(i).containsUsableSkill(SkillType.连击)) {
-                    processAttackCard(myField, opField, i);
+                    opField.getCard(i) != null && !opField.getCard(i).isDead()) {
+                if (myField.getCard(i)!=null&&myField.getCard(i).containsUsableSkill(SkillType.连击) || myField.getCard(i).containsUsableSkill(SkillType.刀语)|| myField.getCard(i).containsUsableSkill(SkillType.正义追击)) {
+                    processAttackCard(myField, opField, i,false);
                 }
+            }
+            if (myField.getCard(i) != null && !myField.getCard(i).isDead() &&
+                        (opField.getCard(i) == null || opField.getCard(i).isDead())) {
+                if (myField.getCard(i)!=null&&(myField.getCard(i).containsUsableSkill(SkillType.连斩)||myField.getCard(i).containsUsableSkill(SkillType.原素裂变)||myField.getCard(i).containsUsableSkill(SkillType.死亡收割))) {
+                    boolean killCard = true;
+                    for(;killCard;) {
+                        killCard = randomAttackCard(myField, opField, i);
+                        if (myField.getCard(i) == null || myField.getCard(i).isDead()){
+                            killCard = false;
+                        }
+                    }
+               }
             }
         }
     }
 
-    private void processAttackCard(Field myField, Field opField, int i) throws HeroDieSignal {
+    private void processAttackCard(Field myField, Field opField, int i,boolean attackflag) throws HeroDieSignal {
         CardInfo defender = opField.getCard(i);
         SkillResolver resolver = this.stage.getResolver();
         GameUI ui = this.stage.getUI();
         if (myField.getCard(i).getStatus().containsStatus(CardStatusType.麻痹)) {
             resolver.removeStatus(myField.getCard(i), CardStatusType.麻痹);
+            resolver.removeStatus(myField.getCard(i), CardStatusType.不屈);
             return;
         }
         for (SkillUseInfo skillUseInfo : myField.getCard(i).getUsableNormalSkills()) {
             if (skillUseInfo.getType() == SkillType.横扫 ||
-                skillUseInfo.getType() == SkillType.三千世界) {
+                    skillUseInfo.getType() == SkillType.灵击 ||
+                    skillUseInfo.getType() == SkillType.三千世界 ||
+                    skillUseInfo.getType() == SkillType.魔龙之怒 ||
+                    skillUseInfo.getType() == SkillType.鬼彻 ||
+                    skillUseInfo.getType() == SkillType.毒杀) {
+                ui.useSkill(myField.getCard(i), defender, skillUseInfo.getSkill(), true);
+            }
+            else if (skillUseInfo.getType() == SkillType.一文字) {
                 ui.useSkill(myField.getCard(i), defender, skillUseInfo.getSkill(), true);
             }
         }
-        OnDamagedResult damagedResult = resolver.attackCard(myField.getCard(i), defender, null);
-        if (damagedResult != null && damagedResult.originalDamage > 0 && myField.getCard(i) != null) {
+        CardInfo taunt = tauntCard(opField);
+        OnDamagedResult damagedResult =null;
+        if (taunt!=null&&attackflag)
+        {
+            Skill skill = null;
+            for(SkillUseInfo skillUseInfo: taunt.getUsableNormalSkills())
+            {
+                if(skillUseInfo.getType() == SkillType.嘲讽 || skillUseInfo.getType() == SkillType.酒池肉林)
+                {
+                    skill = skillUseInfo.getSkill();
+                }
+            }
+            ui.useSkill(taunt,defender,skill,true);
+            damagedResult = resolver.attackCard(myField.getCard(i), taunt, null);
+        }
+        else {
+             damagedResult = resolver.attackCard(myField.getCard(i), defender, null);
+        }
+        if (damagedResult != null && damagedResult.originalDamage > 0 && myField.getCard(i) != null&&attackflag) {
             for (SkillUseInfo skillUseInfo : myField.getCard(i).getUsableNormalSkills()) {
                 if (skillUseInfo.getType() == SkillType.横扫 ||
-                    skillUseInfo.getType() == SkillType.三千世界) {
+                        skillUseInfo.getType() == SkillType.三千世界 ||
+                        skillUseInfo.getType() == SkillType.魔龙之怒 ||
+                        skillUseInfo.getType() == SkillType.鬼彻 ||
+                        skillUseInfo.getType() == SkillType.灵击 ||
+                        skillUseInfo.getType() == SkillType.毒杀) {
                     List<CardInfo> sweepDefenders = new ArrayList<CardInfo>();
                     if (i > 0 && opField.getCard(i - 1) != null) {
                         sweepDefenders.add(opField.getCard(i - 1));
@@ -428,16 +518,84 @@ public class BattleEngine {
                     }
 
                     for (CardInfo sweepDefender : sweepDefenders) {
-                        ui.useSkill(myField.getCard(i), sweepDefender, skillUseInfo.getSkill(), true);
-                        resolver.attackCard(myField.getCard(i), sweepDefender, skillUseInfo, damagedResult.originalDamage);
+                        if(!sweepDefender.isAlive())
+                        {
+                            continue;
+                        }
+                        //木盒修改嘲讽卡牌对横扫不生效。
+//                        CardInfo tauntTwo = tauntCard(opField);
+//                        if (tauntTwo!=null)
+//                        {
+//                            Skill skill = null;
+//                            for(SkillUseInfo skillUseInfoTaunt: tauntTwo.getUsableNormalSkills())
+//                            {
+//                                if(skillUseInfoTaunt.getType() == SkillType.嘲讽 || skillUseInfo.getType() == SkillType.酒池肉林)
+//                                {
+//                                    skill = skillUseInfoTaunt.getSkill();
+//                                }
+//                            }
+//                            ui.useSkill(tauntTwo,defender,skill,true);
+//                            ui.useSkill(myField.getCard(i), tauntTwo, skillUseInfo.getSkill(), true);
+//                            resolver.attackCard(myField.getCard(i), tauntTwo, skillUseInfo, damagedResult.originalDamage);
+//                        }
+//                        else {
+                            ui.useSkill(myField.getCard(i), sweepDefender, skillUseInfo.getSkill(), true);
+                            resolver.attackCard(myField.getCard(i), sweepDefender, skillUseInfo, damagedResult.originalDamage);
+//                        }
                         // Physical attack cannot proceed if attacker is killed by counter attack skills.
                         if (myField.getCard(i) == null) {
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        if (damagedResult != null && damagedResult.originalDamage > 0 && myField.getCard(i) != null&&attackflag) {
+            for (SkillUseInfo skillUseInfo : myField.getCard(i).getUsableNormalSkills()) {
+                if (skillUseInfo.getType() == SkillType.一文字) {
+                    for (CardInfo sweepDefender : opField.getAliveCards()) {
+                        //一文字可以攻击自己。
+//                        if(sweepDefender == opField.getCard(i))
+//                        {
+//                            continue;
+//                        }
+                        if(!sweepDefender.isAlive())
+                        {
+                            continue;
+                        }
+                        ui.useSkill(myField.getCard(i), sweepDefender, skillUseInfo.getSkill(), true);
+                        resolver.attackCard(myField.getCard(i), sweepDefender, skillUseInfo, damagedResult.originalDamage);
+                        if (myField.getCard(i) == null ||myField.getCard(i).isDead()) {
                             break;
                         }
                     }
                 }
             }
         }
+
+    }
+
+    private boolean randomAttackCard(Field myField, Field opField, int i)throws HeroDieSignal {
+        Randomizer random = stage.getRandomizer();
+        SkillResolver resolver = this.stage.getResolver();
+        if (myField.getCard(i).getStatus().containsStatus(CardStatusType.麻痹)) {
+            resolver.removeStatus(myField.getCard(i), CardStatusType.麻痹);
+            return false;
+        }
+        if(opField.size()>0)
+        {
+            List<CardInfo> victims = random.pickRandom(opField.toList(), 1, true, null);
+            for (CardInfo victim : victims) {
+                CardInfo defender = victim;
+                resolver.attackCard(myField.getCard(i), defender, null);
+                if (defender.isDead()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return false;
     }
 
     private Phase roundStart() throws GameOverSignal, AllCardsDieSignal, HeroDieSignal {
@@ -453,7 +611,7 @@ public class BattleEngine {
         }
 
         this.stage.getResolver().deactivateRunes(player);
-
+        this.stage.getResolver().setStagePhase(Phase.开始);
         this.stage.getUI().roundStarted(player, this.stage.getRound());
         int thresholdRound = 51;
 
@@ -471,6 +629,7 @@ public class BattleEngine {
 
     private Phase drawCard() {
         Player activePlayer = this.getActivePlayer();
+        this.stage.getResolver().setStagePhase(Phase.抽卡);
         Hand hand = activePlayer.getHand();
         if (hand.size() >= this.stage.getRule().getMaxHandCards()) {
             stage.getUI().cantDrawHandFull(activePlayer);
@@ -485,5 +644,18 @@ public class BattleEngine {
         hand.addCard(newCard);
         stage.getUI().cardDrawed(activePlayer, newCard);
         return Phase.召唤;
+    }
+
+    private CardInfo tauntCard(Field opField){
+        if(opField.size()>0) {
+            for (CardInfo card : opField.getAliveCards()) {
+                if(card.containsUsableSkill(SkillType.嘲讽)||card.containsUsableSkill(SkillType.酒池肉林))
+                {
+                    return card;
+                }
+            }
+        }
+        return  null;
+
     }
 }

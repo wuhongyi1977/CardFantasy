@@ -5,6 +5,7 @@ import cfvbaibai.cardfantasy.NonSerializable;
 public class CardStatusItem {
     private CardStatusType type;
     private int effect;
+    private int effectNumber;//负面buff持续的回合数
     @NonSerializable
     private SkillUseInfo cause;
 
@@ -12,6 +13,7 @@ public class CardStatusItem {
         this.type = type;
         this.effect = effect;
         this.cause = cause;
+        this.effectNumber=1;
     }
 
     public SkillUseInfo getCause() {
@@ -109,6 +111,14 @@ public class CardStatusItem {
         return new CardStatusItem(CardStatusType.沉默, 0, cause);
     }
 
+    public static CardStatusItem sheep(SkillUseInfo cause) {
+        return new CardStatusItem(CardStatusType.变羊, 0, cause);
+    }
+
+    public static CardStatusItem deathDamnation(SkillUseInfo cause) {
+        return new CardStatusItem(CardStatusType.死咒, 0, cause);
+    }
+
     public String getShortDesc() {
         StringBuffer sb = new StringBuffer();
         sb.append(getType().name());
@@ -123,5 +133,13 @@ public class CardStatusItem {
         sb.append(":");
         sb.append(cause.getOwner().getShortDesc());
         return sb.toString();
+    }
+
+    public int getEffectNumber() {
+        return effectNumber;
+    }
+
+    public void setEffectNumber(int effectNumber) {
+        this.effectNumber = effectNumber;
     }
 }

@@ -370,14 +370,13 @@ public class AttackBuffTest extends SkillValidationTest {
     @Test
     public void test同调_召唤物() {
         SkillTestContext context = prepare(
-            50, 50, "秘银巨石像+森林同调1", "星夜女神", "占位符");
+            50, 50, "秘银巨石像+森林同调1", "占位符+召唤树人守护者", "占位符");
         context.addToField(0, 0);
         context.addToHand(1, 0).setSummonDelay(0);
         CardInfo c占位符 = context.addToField(2, 1);
         context.startGame();
-
         context.proceedOneRound();
-        Assert.assertEquals(810 * 101 / 100, 5000 - c占位符.getHP());
+        Assert.assertEquals(810 * 100 / 100, 5000 - c占位符.getHP());
     }
     
     /**
@@ -626,6 +625,7 @@ public class AttackBuffTest extends SkillValidationTest {
 
     @Test
     public void test觉醒神兵召唤_基础() {
+        //觉醒机制修改这个测试作废。
         SkillTestContext context = prepare(50, 50, "秘银巨石像+觉醒神兵召唤", "金牌火鸡", "占位符", "秘银巨石像");
         CardInfo c秘银巨石像 = context.addToField(0, 0);
         CardInfo c金牌火鸡 = context.addToField(1, 0);
@@ -637,7 +637,7 @@ public class AttackBuffTest extends SkillValidationTest {
         context.proceedOneRound();
 
         // 神兵召唤被激活
-        Assert.assertEquals(810 + 500, 5000 - c占位符.getHP());
+        Assert.assertEquals(810, 5000 - c占位符.getHP());
         Assert.assertEquals(810, c秘银巨石像.getCurrentAT());
 
         context.proceedOneRound();
@@ -647,7 +647,7 @@ public class AttackBuffTest extends SkillValidationTest {
         random.addNextNumbers(0);
         context.proceedOneRound();
         // 由于神兵召唤已被激活，此轮虽然金牌火鸡已死，神兵召唤仍发挥效果
-        Assert.assertEquals(810 + 500 + 810 + 500, 5000 - c占位符.getHP());
+        Assert.assertEquals(810  + 810 , 5000 - c占位符.getHP());
         Assert.assertEquals(810, c秘银巨石像.getCurrentAT());
     }
 

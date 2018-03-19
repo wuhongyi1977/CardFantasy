@@ -27,7 +27,9 @@ public class SoulControl {
             if (!deadCard.containsUsableSkillsWithTag(SkillTag.召唤) &&
                 !deadCard.containsUsableSkillsWithTag(SkillTag.复活) &&
                 !deadCard.containsUsableSkillsWithTag(SkillTag.守护) &&
-                deadCard.getRace() != Race.BOSS) {
+                !deadCard.containsUsableSkillsWithTag(SkillTag.抗夺魂) &&
+                deadCard.getRace() != Race.BOSS &&
+                deadCard.getRace() != Race.DEMON) {
                 candidates.add(deadCard);
             }
         }
@@ -39,7 +41,7 @@ public class SoulControl {
         CardInfo victim = victims.get(0);
         resolver.getStage().getUI().useSkill(attacker, victim, skill, true);
         victim.switchOwner(attacker.getOwner());
-        resolver.summonCard(victim.getOwner(), victim, attacker, true, skill);
+        resolver.summonCard(victim.getOwner(), victim, attacker, false, skill);
         CardStatusItem weakStatusItem = CardStatusItem.weak(skillUseInfo);
         resolver.getStage().getUI().addCardStatus(attacker, victim, skill, weakStatusItem);
         victim.addStatus(weakStatusItem);
